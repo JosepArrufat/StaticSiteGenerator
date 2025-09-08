@@ -1,8 +1,9 @@
 from textnode import TextNode
+from file_functions import copy_content_from_dir
 
 def main():
-    NewNode = TextNode("TextNode(This is some anchor text", "link", "https://www.boot.dev")
-    print(NewNode)
+    copy_content_from_dir("static", "public")
+    
 
 if __name__ == "__main__":
     main()
