@@ -1,7 +1,17 @@
 import unittest
-
+import textwrap
 from textnode import TextNode, TextType
-from functions import split_nodes_delimiter, extract_markdown_images, extract_markdown_links, split_nodes_image, split_nodes_link
+from functions import (
+    split_nodes_delimiter, 
+    extract_markdown_images,
+    extract_markdown_links, split_nodes_image,
+    split_nodes_link, 
+    text_to_text_nodes, 
+    markdown_to_blocks,
+    markdown_to_block_type,
+    BlockType, 
+    markdown_to_html_node
+)
 class TestSplitNodesDelimiter(unittest.TestCase):
     def test_splits(self):
         node = TextNode("This is a text node", TextType.BOLD)
@@ -186,5 +196,346 @@ class TestSplitNodesLink(unittest.TestCase):
             new_nodes5,
         )
 
+class TestTextToTextNodes(unittest.TestCase):
+    def test_full_markdown(self):
+        text = "This is **bold** and _italic_ and `code`. It also has an ![image](https://i.imgur.com/zjjcJKZ.png) and a [link](https://www.google.com)."
+        nodes = text_to_text_nodes(text)
+        expected_nodes = [
+            TextNode("This is ", TextType.TEXT),
+            TextNode("bold", TextType.BOLD),
+            TextNode(" and ", TextType.TEXT),
+            TextNode("italic", TextType.ITALIC),
+            TextNode(" and ", TextType.TEXT),
+            TextNode("code", TextType.CODE),
+            TextNode(". It also has an ", TextType.TEXT),
+            TextNode("image", TextType.IMAGE, "https://i.imgur.com/zjjcJKZ.png"),
+            TextNode(" and a ", TextType.TEXT),
+            TextNode("link", TextType.LINK, "https://www.google.com"),
+            TextNode(".", TextType.TEXT),
+        ]
+        self.assertListEqual(nodes, expected_nodes)
+
+    def test_no_markdown(self):
+        text = "This is just a regular string with no special formatting."
+        nodes = text_to_text_nodes(text)
+        expected_nodes = [
+            TextNode("This is just a regular string with no special formatting.", TextType.TEXT),
+        ]
+        self.assertListEqual(nodes, expected_nodes)
+
+    def test_consecutive_types(self):
+        text = "Here is **bold**_italic_`code`![image](https://url1.com)[link](https://url2.com)."
+        nodes = text_to_text_nodes(text)
+        expected_nodes = [
+            TextNode("Here is ", TextType.TEXT),
+            TextNode("bold", TextType.BOLD),
+            TextNode("italic", TextType.ITALIC),
+            TextNode("code", TextType.CODE),
+            TextNode("image", TextType.IMAGE, "https://url1.com"),
+            TextNode("link", TextType.LINK, "https://url2.com"),
+            TextNode(".", TextType.TEXT),
+        ]
+        self.assertListEqual(nodes, expected_nodes)
+
+    def test_start_and_end_with_markdown(self):
+        text = "**Starts bold** and _ends italic_."
+        nodes = text_to_text_nodes(text)
+        expected_nodes = [
+            TextNode("Starts bold", TextType.BOLD),
+            TextNode(" and ", TextType.TEXT),
+            TextNode("ends italic", TextType.ITALIC),
+            TextNode(".", TextType.TEXT),
+        ]
+        self.assertListEqual(nodes, expected_nodes)
+
+    def test_only_images_and_links(self):
+        text = "![image](https://url1.com)[link](https://url2.com)"
+        nodes = text_to_text_nodes(text)
+        expected_nodes = [
+            TextNode("image", TextType.IMAGE, "https://url1.com"),
+            TextNode("link", TextType.LINK, "https://url2.com"),
+        ]
+        self.assertListEqual(nodes, expected_nodes)
+
+    def test_duplicate_markdown(self):
+        # Test case: Repeated markdown elements
+        text = "This is a **bold** word and another **bold** word."
+        nodes = text_to_text_nodes(text)
+        expected_nodes = [
+            TextNode("This is a ", TextType.TEXT),
+            TextNode("bold", TextType.BOLD),
+            TextNode(" word and another ", TextType.TEXT),
+            TextNode("bold", TextType.BOLD),
+            TextNode(" word.", TextType.TEXT),
+        ]
+        self.assertListEqual(nodes, expected_nodes)
+
+class TestMarkdownToBlock(unittest.TestCase):
+    def test_markdown_to_blocks(self):
+        md = """This is **bolded** paragraph
+
+This is another paragraph with _italic_ text and `code` here
+This is the same paragraph on a new line
+
+- This is a list
+- with items"""
+        blocks = markdown_to_blocks(md)
+        self.assertEqual(
+            blocks,
+            [
+                "This is **bolded** paragraph",
+                "This is another paragraph with _italic_ text and `code` here\nThis is the same paragraph on a new line",
+                "- This is a list\n- with items",
+            ],
+        )
+
+    def test_with_extra_leading_and_trailing_newlines(self):
+        md = """
+This is a paragraph.
+
+This is another.
+
+"""
+        blocks = markdown_to_blocks(md)
+        self.assertEqual(
+            blocks,
+            [
+                "This is a paragraph.",
+                "This is another.",
+            ]
+        )
+
+    def test_multiple_blank_lines(self):
+        md = """# This is a heading
+
+
+This is a paragraph.
+
+
+And another paragraph."""
+        blocks = markdown_to_blocks(md)
+        self.assertEqual(
+            blocks,
+            [
+                "# This is a heading",
+                "This is a paragraph.",
+                "And another paragraph.",
+            ]
+        )
+
+    def test_no_blank_lines(self):
+        md = "This is a single line with no blank lines."
+        blocks = markdown_to_blocks(md)
+        self.assertEqual(
+            blocks,
+            [
+                "This is a single line with no blank lines.",
+            ]
+        )
+
+    def test_only_whitespace(self):
+        md = "   \n\n\n   \n"
+        blocks = markdown_to_blocks(md)
+        self.assertEqual(
+            blocks,
+            []
+        )
+    
+    def test_list_with_blank_line(self):
+        md = """- This is the first item
+- This is the second item
+
+- This is the third item"""
+        blocks = markdown_to_blocks(md)
+        self.assertEqual(
+            blocks,
+            [
+                "- This is the first item\n- This is the second item",
+                "- This is the third item",
+            ]
+        )
+
+class TestBlockToBlockType(unittest.TestCase):
+    def test_paragraph(self):
+        self.assertEqual(markdown_to_block_type("This is a simple paragraph."), BlockType.PARAGRAPH)
+        self.assertEqual(markdown_to_block_type("This is a paragraph.\nWith a new line."), BlockType.PARAGRAPH)
+
+    def test_heading(self):
+        self.assertEqual(markdown_to_block_type("# Heading 1"), BlockType.HEADING)
+        self.assertEqual(markdown_to_block_type("## Heading 2"), BlockType.HEADING)
+        self.assertEqual(markdown_to_block_type("###### Heading 6"), BlockType.HEADING)
+        self.assertEqual(markdown_to_block_type("This is a paragraph\n# This is a heading"), BlockType.PARAGRAPH)
+
+    def test_heading_invalid(self):
+        self.assertNotEqual(markdown_to_block_type("###No space after hash"), BlockType.HEADING)
+        self.assertNotEqual(markdown_to_block_type("####### Too many hashes"), BlockType.HEADING)
+        self.assertNotEqual(markdown_to_block_type(" # Has leading spaces"), BlockType.HEADING)
+
+    def test_code(self):
+        code_block = """```
+This is a code block
+```"""
+        self.assertEqual(markdown_to_block_type(code_block), BlockType.CODE)
+        
+    def test_code_invalid(self):
+        # Missing closing backticks
+        self.assertNotEqual(markdown_to_block_type("```\nThis is not a code block"), BlockType.CODE)
+        # Not a code block because of text after opening backticks
+        self.assertNotEqual(markdown_to_block_type("``` python\nThis is not a valid code block"), BlockType.CODE)
+
+    def test_quote(self):
+        quote_block = """> This is a quote.
+> This is the second line."""
+        self.assertEqual(markdown_to_block_type(quote_block), BlockType.QUOTE)
+
+    def test_quote_invalid(self):
+        # Missing `>` on a line
+        self.assertNotEqual(markdown_to_block_type("> Line 1\nLine 2"), BlockType.QUOTE)
+        # Leading spaces before `>`
+        self.assertNotEqual(markdown_to_block_type(" > Line 1"), BlockType.QUOTE)
+
+    def test_unordered_list(self):
+        list_block = """- First item
+- Second item
+* Third item"""
+        self.assertEqual(markdown_to_block_type(list_block), BlockType.UNORDERED_LIST)
+
+    def test_unordered_list_invalid(self):
+        # Missing space after `-`
+        self.assertNotEqual(markdown_to_block_type("-No space after dash"), BlockType.UNORDERED_LIST)
+        # Empty line in between items
+        self.assertNotEqual(markdown_to_block_type("- Item 1\n\n- Item 2"), BlockType.UNORDERED_LIST)
+        # A line without a marker
+        self.assertNotEqual(markdown_to_block_type("- Item 1\nJust a normal line"), BlockType.UNORDERED_LIST)
+
+    def test_ordered_list(self):
+        list_block = """1. First item
+2. Second item
+3. Third item"""
+        self.assertEqual(markdown_to_block_type(list_block), BlockType.ORDERED_LIST)
+
+    def test_ordered_list_invalid(self):
+        # Missing `.`
+        self.assertNotEqual(markdown_to_block_type("1 First item"), BlockType.ORDERED_LIST)
+        # Incorrect sequence
+        self.assertNotEqual(markdown_to_block_type("1. First\n2. Second\n4. Third"), BlockType.ORDERED_LIST)
+        # Not starting at 1
+        self.assertNotEqual(markdown_to_block_type("2. First item"), BlockType.ORDERED_LIST)
+        # Missing space after `.`
+        self.assertNotEqual(markdown_to_block_type("1.No space"), BlockType.ORDERED_LIST)
+        
+class TestMardownToHTML(unittest.TestCase):
+    def test_paragraphs(self):
+        md = """
+This is **bolded** paragraph
+text in a p
+tag here
+
+This is another paragraph with _italic_ text and `code` here"""
+
+        node = markdown_to_html_node(md)
+        html = node.to_html()
+        self.assertEqual(
+            html,
+            "<div><p>This is <b>bolded</b> paragraph text in a p tag here</p><p>This is another paragraph with <i>italic</i> text and <code>code</code> here</p></div>",
+        )
+
+    def test_codeblock(self):
+        md = """
+    ```
+This is text that _should_ remain
+the **same** even with inline stuff
+    ```"""
+
+        node = markdown_to_html_node(md)
+        html = node.to_html()
+        self.assertEqual(
+            html,
+            "<div><pre><code>This is text that _should_ remain\nthe **same** even with inline stuff\n</code></pre></div>",
+        )
+
+    def test_headings(self):
+        md = textwrap.dedent("""
+        # This is an H1
+        ## This is an H2
+        ### This is an H3
+        #### This is an H4
+        ##### This is an H5
+        ###### This is an H6
+        """)
+        node = markdown_to_html_node(md)
+        html = node.to_html()
+        self.assertEqual(
+            html,
+            "<div><h1>This is an H1</h1><h2>This is an H2</h2><h3>This is an H3</h3><h4>This is an H4</h4><h5>This is an H5</h5><h6>This is an H6</h6></div>",
+        )
+
+    def test_unordered_lists(self):
+        md = textwrap.dedent("""
+        - This is the first item
+        - This is the **second** item
+        * And this is the _third_ one
+        """)
+        node = markdown_to_html_node(md)
+        html = node.to_html()
+        self.assertEqual(
+            html,
+            "<div><ul><li>This is the first item</li><li>This is the <b>second</b> item</li><li>And this is the <i>third</i> one</li></ul></div>",
+        )
+
+    def test_ordered_lists(self):
+        md = textwrap.dedent("""
+        1. This is the first item
+        2. This is the second item
+        3. This is the third item
+        """)
+        node = markdown_to_html_node(md)
+        html = node.to_html()
+        self.assertEqual(
+            html,
+            "<div><ol><li>This is the first item</li><li>This is the second item</li><li>This is the third item</li></ol></div>",
+        )
+    
+    def test_ordered_lists_edge_cases(self):
+        md = textwrap.dedent("""
+        1. First item
+        2. Second item
+        3. Tenth item
+        4. Eleventh item
+        """)
+        node = markdown_to_html_node(md)
+        html = node.to_html()
+        self.assertEqual(
+            html,
+            "<div><ol><li>First item</li><li>Second item</li><li>Tenth item</li><li>Eleventh item</li></ol></div>",
+        )
+
+    def test_quotes(self):
+        md = textwrap.dedent("""
+        > This is a quote block.
+        > It can span multiple lines.
+        > And can also include **inline** formatting.
+        """)
+        node = markdown_to_html_node(md)
+        html = node.to_html()
+        self.assertEqual(
+            html,
+            "<div><blockquote>This is a quote block. It can span multiple lines. And can also include <b>inline</b> formatting.</blockquote></div>",
+        )
+    
+    def test_quotes_edge_case(self):
+        md = textwrap.dedent("""
+        >This is a quote with no space
+        > And this line has a space
+        > 
+        > This line has a blank line above it
+        """)
+        node = markdown_to_html_node(md)
+        html = node.to_html()
+        self.assertEqual(
+            html,
+            "<div><blockquote>This is a quote with no space\nAnd this line has a space\n\nThis line has a blank line above it</blockquote></div>",
+        )
+  
 if __name__ == "__main__":
     unittest.main()
