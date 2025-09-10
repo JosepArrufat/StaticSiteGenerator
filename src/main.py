@@ -8,7 +8,7 @@ def main():
         basepath = "/"
     else:
         basepath = sys.argv[1]
-    copy_content_from_dir("static", "public")
+    copy_content_from_dir("static", "docs")
     generate_page_recursive("content", "template.html", "docs", basepath)
 
 if __name__ == "__main__":
