@@ -15,14 +15,14 @@ class HTMLNode:
             temp += formated_string
         return temp
     def __repr__(self):
-        return f"Type is {tag} with value {value} and children {children}. Props={props}"
+        return f"Type is {self.tag} with value {self.value} and children {self.children}. Props={self.props}"
 
 class LeafNode(HTMLNode):
     def __init__(self, tag, value, props=None):
         super().__init__(tag, value, None, props)
 
     def to_html(self):
-        if not self.value:
+        if self.value is None:
             raise ValueError("All leaf nodes must have a value")
         if not self.tag:
             return f"{self.value}"
